@@ -18,7 +18,7 @@ with open('service_account.json', 'w', encoding='utf-8') as f:
 
 SERVICE_ACCOUNT_FILE = 'service_account.json'
 SCOPES = ['https://www.googleapis.com/auth/drive']
-FOLDER_ID = 'ТВОЙ_FOLDER_ID'  # вставь ID папки Obsidian
+FOLDER_ID = '1nQECNPbttj32SnAhpdBjwWuYWJUUxtto'  # вставь ID папки Obsidian
 
 credentials = service_account.Credentials.from_service_account_file(
     SERVICE_ACCOUNT_FILE, scopes=SCOPES)

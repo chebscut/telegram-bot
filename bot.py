@@ -3,6 +3,7 @@ from threading import Thread
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import os
+import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -10,9 +11,14 @@ from googleapiclient.discovery import build
 TOKEN = os.getenv("BOT_TOKEN")
 
 # ------------------- Google Drive -------------------
-SERVICE_ACCOUNT_FILE = 'service_account.json'  # JSON ключ сервисного аккаунта
+# Создаём JSON-файл из переменной окружения
+json_str = os.environ.get('GOOGLE_CREDENTIALS')  # здесь вставим содержимое ключа
+with open('service_account.json', 'w', encoding='utf-8') as f:
+    f.write(json_str)
+
+SERVICE_ACCOUNT_FILE = 'service_account.json'
 SCOPES = ['https://www.googleapis.com/auth/drive']
-FOLDER_ID = 'ТВОЙ_FOLDER_ID'  # вставь ID папки с Obsidian
+FOLDER_ID = 'ТВОЙ_FOLDER_ID'  # вставь ID папки Obsidian
 
 credentials = service_account.Credentials.from_service_account_file(
     SERVICE_ACCOUNT_FILE, scopes=SCOPES)

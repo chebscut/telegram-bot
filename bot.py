@@ -11,17 +11,18 @@ from googleapiclient.discovery import build
 TOKEN = os.getenv("BOT_TOKEN")
 
 # ------------------- Google Drive -------------------
-# Создаём JSON-файл из переменной окружения
-json_str = os.environ.get('GOOGLE_CREDENTIALS')  # здесь вставим содержимое ключа
-with open('service_account.json', 'w', encoding='utf-8') as f:
-    f.write(json_str)
+# Берём JSON из переменной окружения
+google_credentials = os.getenv("GOOGLE_CREDENTIALS")
+if not google_credentials:
+    raise ValueError("Нет GOOGLE_CREDENTIALS! Добавь ключ в настройки Render.")
 
-SERVICE_ACCOUNT_FILE = 'service_account.json'
+service_account_info = json.loads(google_credentials)
 SCOPES = ['https://www.googleapis.com/auth/drive']
-FOLDER_ID = '1nQECNPbttj32SnAhpdBjwWuYWJUUxtto'  # вставь ID папки Obsidian
+FOLDER_ID = '1nQECNPbttj32SnAhpdBjwWuYWJUUxtto'  # ID папки Obsidian в Google Drive
 
-credentials = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+credentials = service_account.Credentials.from_service_account_info(
+    service_account_info, scopes=SCOPES
+)
 service = build('drive', 'v3', credentials=credentials)
 
 # ------------------- Flask-сервер -------------------
@@ -55,7 +56,7 @@ async def list_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     if not TOKEN:
-        raise ValueError("Нет BOT_TOKEN! Добавь его в настройки сервера.")
+        raise ValueError("Нет BOT_TOKEN! Добавь его в настройки Render.")
     
     # Запускаем Flask-сервер в фоне для Render
     thread = Thread(target=run_server)

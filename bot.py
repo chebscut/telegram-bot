@@ -11,12 +11,16 @@ from googleapiclient.discovery import build
 TOKEN = os.getenv("BOT_TOKEN")
 
 # ------------------- Google Drive -------------------
-# Берём JSON из переменной окружения
 google_credentials = os.getenv("GOOGLE_CREDENTIALS")
 if not google_credentials:
     raise ValueError("Нет GOOGLE_CREDENTIALS! Добавь ключ в настройки Render.")
 
 service_account_info = json.loads(google_credentials)
+
+# 🔑 фиксируем переносы строк в private_key
+if "private_key" in service_account_info:
+    service_account_info["private_key"] = service_account_info["private_key"].replace("\\n", "\n")
+
 SCOPES = ['https://www.googleapis.com/auth/drive']
 FOLDER_ID = '1nQECNPbttj32SnAhpdBjwWuYWJUUxtto'  # ID папки Obsidian в Google Drive
 
@@ -64,10 +68,4 @@ def main():
 
     # Настраиваем бота
     app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("list", list_notes))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+    app.add_handler(CommandHandler_

@@ -96,33 +96,54 @@ async def list_folders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Выберите папку:", reply_markup=reply_markup)
 
-# Показать заметки внутри папки
+# Показать заметки 
 async def folder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     folder_id = query.data.split(":")[1]
+    parent_id = query.data.split(":")[2] if ":" in query.data else FOLDER_ID
 
-    results = service.files().list(
+    # Получаем папки в текущей папке
+    folders_result = service.files().list(
+        q=f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.folder'",
+        fields="files(id, name)"
+    ).execute()
+    folders = folders_result.get('files', [])
+
+    # Получаем заметки в текущей папке
+    notes_result = service.files().list(
         q=f"'{folder_id}' in parents and mimeType='text/markdown'",
         fields="files(id, name)"
     ).execute()
-    files = results.get('files', [])
+    notes = notes_result.get('files', [])
 
-    if not files:
-        await query.message.reply_text("Заметок нет 😢")
-        return
+    keyboard = []
 
-    keyboard = [
-        [InlineKeyboardButton(f['name'], callback_data=f"note:{f['id']}")] for f in files
-    ]
+    # Кнопки подпапок
+    for f in folders:
+        keyboard.append([InlineKeyboardButton(f['name'], callback_data=f"folder:{f['id']}:{folder_id}")])
+
+    # Кнопки заметок
+    for n in notes:
+        keyboard.append([InlineKeyboardButton(n['name'], callback_data=f"note:{n['id']}:{folder_id}")])
+
+    # Кнопка "Назад", если не корень
+    if folder_id != FOLDER_ID:
+        keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"folder:{parent_id}")])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.message.reply_text("Выберите заметку:", reply_markup=reply_markup)
-
+    await query.message.reply_text("Выберите папку или заметку:", reply_markup=reply_markup)
 # Показать содержимое заметки
 async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    file_id = query.data.split(":")[1]
+    parts = query.data.split(":")
+    file_id = parts[1]
+    folder_id = parts[2] if len(parts) > 2 else FOLDER_ID
+
+    keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data=f"folder:{folder_id}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.message.reply_text("Вернуться:", reply_markup=reply_markup)
 
     meta = service.files().get(fileId=file_id, fields="name").execute()
     name = meta.get("name", "note.md")
@@ -133,9 +154,6 @@ async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # ищем все упоминания картинок ![[...]]
     matches = re.findall(r"!\[\[(.*?)\]\]", text, flags=re.IGNORECASE | re.MULTILINE)
 
-    # 🔹 Отладка: показать найденные картинки
-    if matches:
-        await query.message.reply_text("Найденные картинки:\n" + "\n".join(matches))
 
     # убираем все ![[...]] из текста
     clean_text = re.sub(r"!\[\[(.*?)\]\]", "", text, flags=re.IGNORECASE | re.MULTILINE)

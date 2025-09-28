@@ -81,18 +81,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Показать список папок
 async def list_folders(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    all_files = get_all_files()
-    folder_map = {}
-    for f in all_files:
-        parent_id = f.get('parents', [FOLDER_ID])[0]
-        folder_map[parent_id] = folder_map.get(parent_id, [])
-    keyboard = [
-        [InlineKeyboardButton("Все заметки", callback_data=f"folder:{FOLDER_ID}")]
-    ]
-    # Отображаем только имена папок для удобства
-    for f in all_files:
-        if f['mimeType'] == 'application/vnd.google-apps.folder':
-            keyboard.append([InlineKeyboardButton(f['name'], callback_data=f"folder:{f['id']}")])
+    # Получаем только подпапки в корне
+    folders_result = service.files().list(
+        q=f"'{FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder'",
+        fields="files(id, name)"
+    ).execute()
+    folders = folders_result.get('files', [])
+
+    # Кнопка "Все заметки" в корне
+    keyboard = [[InlineKeyboardButton("Все заметки", callback_data=f"folder:{FOLDER_ID}")]]
+
+    # Добавляем кнопки подпапок
+    for f in folders:
+        keyboard.append([InlineKeyboardButton(f['name'], callback_data=f"folder:{f['id']}:{FOLDER_ID}")])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Выберите папку:", reply_markup=reply_markup)
 
@@ -100,17 +102,18 @@ async def list_folders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def folder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    folder_id = query.data.split(":")[1]
-    parent_id = query.data.split(":")[2] if ":" in query.data else FOLDER_ID
+    parts = query.data.split(":")
+    folder_id = parts[1]
+    parent_id = parts[2] if len(parts) > 2 else FOLDER_ID
 
-    # Получаем папки в текущей папке
+    # Получаем подпапки
     folders_result = service.files().list(
         q=f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.folder'",
         fields="files(id, name)"
     ).execute()
     folders = folders_result.get('files', [])
 
-    # Получаем заметки в текущей папке
+    # Получаем заметки
     notes_result = service.files().list(
         q=f"'{folder_id}' in parents and mimeType='text/markdown'",
         fields="files(id, name)"
@@ -127,12 +130,13 @@ async def folder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for n in notes:
         keyboard.append([InlineKeyboardButton(n['name'], callback_data=f"note:{n['id']}:{folder_id}")])
 
-    # Кнопка "Назад", если не корень
+    # Кнопка "Назад"
     if folder_id != FOLDER_ID:
         keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"folder:{parent_id}")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.reply_text("Выберите папку или заметку:", reply_markup=reply_markup)
+    
 # Показать содержимое заметки
 async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -141,6 +145,7 @@ async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     file_id = parts[1]
     folder_id = parts[2] if len(parts) > 2 else FOLDER_ID
 
+    # Кнопка "Назад"
     keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data=f"folder:{folder_id}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.reply_text("Вернуться:", reply_markup=reply_markup)

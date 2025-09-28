@@ -89,7 +89,7 @@ async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # ищем все вхождения ![[...]]
     matches = re.findall(r"!\[\[(.*?)\]\]", text)
 
-    # чистим текст (убираем ![[...]])
+    # убираем все ![[...]] из текста
     clean_text = re.sub(r"!\[\[(.*?)\]\]", "", text)
 
     # ограничиваем текст
@@ -98,21 +98,22 @@ async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await query.message.reply_text(f"📄 {name}:\n\n{clean_text}")
 
+    # 🔥 обрабатываем картинки
     if matches:
         all_files = get_all_files()
-        file_map = {f["name"]: f["id"] for f in all_files}
+        file_map = {f["name"].lower(): f["id"] for f in all_files}  # делаем регистр-независимый поиск
 
         for m in matches:
+            # если нет расширения — добавим .png
             if not (m.lower().endswith(".png") or m.lower().endswith(".jpg")):
                 m = m + ".png"
 
-            if m in file_map:
-                img_id = file_map[m]
-                img_data = service.files().get_media(fileId=img_id).execute()
+            file_id = file_map.get(m.lower())
+            if file_id:
+                img_data = service.files().get_media(fileId=file_id).execute()
                 bio = BytesIO(img_data)
                 bio.name = m
                 await query.message.reply_photo(InputFile(bio))
-
 
 # ------------------- main -------------------
 def main():

@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import base64
 from io import BytesIO
 from threading import Thread
 from flask import Flask
@@ -77,6 +78,14 @@ async def start_buttons_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.message.reply_text("Введите номер блюда (например 123):")
         context.user_data['awaiting_number'] = True
 
+def encode_id(s: str) -> str:
+    """Кодирует строку в base64 для безопасного callback_data"""
+    return base64.urlsafe_b64encode(s.encode()).decode()
+
+def decode_id(s: str) -> str:
+    """Декодирует base64 обратно в строку"""
+    return base64.urlsafe_b64decode(s.encode()).decode()
+
 # Функция для вывода списка папок при callback
 async def list_folders_from_query(query, context):
     folders_result = service.files().list(
@@ -85,9 +94,15 @@ async def list_folders_from_query(query, context):
     ).execute()
     folders = folders_result.get('files', [])
 
-    keyboard = [[InlineKeyboardButton("Все заметки", callback_data=f"folder:{FOLDER_ID}")]]
+    keyboard = [[
+        InlineKeyboardButton("Все заметки", callback_data=f"folder:{encode_id(FOLDER_ID)}")
+    ]]
+
     for f in folders:
-        keyboard.append([InlineKeyboardButton(f['name'], callback_data=f"folder:{f['id']}:{FOLDER_ID}")])
+        keyboard.append([InlineKeyboardButton(
+            f['name'],
+            callback_data=f"folder:{encode_id(f['id'])}:{encode_id(FOLDER_ID)}"
+        )])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.reply_text("Выберите папку:", reply_markup=reply_markup)

@@ -40,56 +40,68 @@ def run_server():
     app_server.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
 # ------------------- Telegram-бот -------------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я работаю на Render 🤖\n\n"
-                                    "Доступные команды:\n"
-                                    "/list — список заметок\n"
-                                    "/note <имя> — открыть заметку")
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(update.message.text)
+# 📂 Показать содержимое папки
+async def list_folders(update: Update, context: ContextTypes.DEFAULT_TYPE, folder_id=None):
+    if folder_id is None:
+        folder_id = FOLDER_ID  # корневая папка
 
-async def list_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     results = service.files().list(
-        q=f"'{FOLDER_ID}' in parents and mimeType='text/markdown'",
-        fields="files(id, name)"
+        q=f"'{folder_id}' in parents",
+        fields="files(id, name, mimeType)"
     ).execute()
     files = results.get('files', [])
+
     if not files:
-        await update.message.reply_text("Заметок нет 😢")
+        await update.message.reply_text("Папка пуста 😢")
+        return
+
+    keyboard = []
+    for f in files:
+        if f["mimeType"] == "application/vnd.google-apps.folder":  # это папка
+            keyboard.append([InlineKeyboardButton(f"📂 {f['name']}", callback_data=f"folder:{f['id']}")])
+        elif f["mimeType"] == "text/markdown":  # это заметка
+            keyboard.append([InlineKeyboardButton(f"📝 {f['name']}", callback_data=f"note:{f['id']}")])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    if update.message:
+        await update.message.reply_text("Выбери папку или заметку:", reply_markup=reply_markup)
     else:
-        names = "\n".join(file['name'] for file in files)
-        await update.message.reply_text(f"Заметки:\n{names}")
+        await update.callback_query.edit_message_text("Выбери папку или заметку:", reply_markup=reply_markup)
 
-# 🔥 новая команда
-async def get_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Использование: /note <имя_файла.md>")
-        return
 
-    filename = " ".join(context.args)
+# 📄 Показать содержимое заметки
+async def show_note(update: Update, context: ContextTypes.DEFAULT_TYPE, file_id: str):
+    file = service.files().get_media(fileId=file_id).execute()
+    text = file.decode("utf-8")
 
-    # ищем файл в папке Obsidian
-    results = service.files().list(
-        q=f"'{FOLDER_ID}' in parents and name='{filename}'",
-        fields="files(id, name)"
-    ).execute()
-    files = results.get('files', [])
-
-    if not files:
-        await update.message.reply_text("Такой заметки нет 😢")
-        return
-
-    file_id = files[0]['id']
-    # скачиваем содержимое
-    content = service.files().get_media(fileId=file_id).execute()
-    text = content.decode("utf-8")
-
-    # Telegram ограничивает сообщение 4096 символами
+    # обрежем слишком длинные заметки (чтобы Telegram не ругался)
     if len(text) > 4000:
-        await update.message.reply_text(f"📄 {filename} (показаны первые 4000 символов):\n\n{text[:4000]}")
-    else:
-        await update.message.reply_text(f"📄 {filename}:\n\n{text}")
+        text = text[:4000] + "\n\n...✂️ заметка обрезана"
+
+    await update.callback_query.message.reply_text(f"📄 Содержимое:\n\n{text}")
+
+
+# 🎛 Обработчик кнопок
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    if data.startswith("folder:"):
+        folder_id = data.split(":", 1)[1]
+        await list_folders(update, context, folder_id)
+    elif data.startswith("note:"):
+        file_id = data.split(":", 1)[1]
+        await show_note(update, context, file_id)
+
+
+# ⚡️ Регистрируем хендлеры
+def register_handlers(app):
+    app.add_handler(CommandHandler("folders", list_folders))
+    app.add_handler(CallbackQueryHandler(button_handler))
+
 
 
 # ------------------- main -------------------

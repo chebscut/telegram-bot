@@ -19,12 +19,11 @@ if not google_credentials:
 
 service_account_info = json.loads(google_credentials)
 
-# 🔑 фиксируем переносы строк в private_key
 if "private_key" in service_account_info:
     service_account_info["private_key"] = service_account_info["private_key"].replace("\\n", "\n")
 
 SCOPES = ['https://www.googleapis.com/auth/drive']
-FOLDER_ID = '1nQECNPbttj32SnAhpdBjwWuYWJUUxtto'  # ID папки Obsidian в Google Drive
+FOLDER_ID = '1nQECNPbttj32SnAhpdBjwWuYWJUUxtto'
 
 credentials = service_account.Credentials.from_service_account_info(
     service_account_info, scopes=SCOPES
@@ -43,7 +42,7 @@ def run_server():
 
 # ------------------- Работа с Drive -------------------
 def get_all_files(folder_id=FOLDER_ID):
-    """Возвращает список всех файлов в папке и подпапках рекурсивно"""
+    """Возвращает все файлы и папки рекурсивно"""
     files = []
     folders_to_check = [folder_id]
 
@@ -60,16 +59,8 @@ def get_all_files(folder_id=FOLDER_ID):
                 files.append(f)
     return files
 
-def get_folder_structure(folder_id=FOLDER_ID):
-    """Возвращает структуру папок и файлов в словаре {folder_name: [files]}"""
-    structure = {}
-    all_files = get_all_files(folder_id)
-    for f in all_files:
-        folder_name = f.get('parents', [folder_id])[0]
-        if folder_name not in structure:
-            structure[folder_name] = []
-        structure[folder_name].append(f)
-    return structure
+# Словарь для хранения родительских папок (для кнопки "Назад")
+folder_parents = {}
 
 # ------------------- Telegram-бот -------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -79,41 +70,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/folders — список папок с заметками"
     )
 
-# Показать список папок
+# Список папок в корне
 async def list_folders(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Получаем только подпапки в корне
     folders_result = service.files().list(
         q=f"'{FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder'",
         fields="files(id, name)"
     ).execute()
     folders = folders_result.get('files', [])
 
-    # Кнопка "Все заметки" в корне
     keyboard = [[InlineKeyboardButton("Все заметки", callback_data=f"folder:{FOLDER_ID}")]]
-
-    # Добавляем кнопки подпапок
+    
     for f in folders:
-        keyboard.append([InlineKeyboardButton(f['name'], callback_data=f"folder:{f['id']}:{FOLDER_ID}")])
+        folder_parents[f['id']] = FOLDER_ID
+        keyboard.append([InlineKeyboardButton(f['name'], callback_data=f"folder:{f['id']}")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Выберите папку:", reply_markup=reply_markup)
 
-# Показать заметки 
+# Показать содержимое папки
 async def folder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    parts = query.data.split(":")
-    folder_id = parts[1]
-    parent_id = parts[2] if len(parts) > 2 else FOLDER_ID
+    folder_id = query.data.split(":")[1]
+    parent_id = folder_parents.get(folder_id, FOLDER_ID)
 
-    # Получаем подпапки
+    # Подпапки
     folders_result = service.files().list(
         q=f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.folder'",
         fields="files(id, name)"
     ).execute()
     folders = folders_result.get('files', [])
 
-    # Получаем заметки
+    # Заметки
     notes_result = service.files().list(
         q=f"'{folder_id}' in parents and mimeType='text/markdown'",
         fields="files(id, name)"
@@ -122,30 +110,27 @@ async def folder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = []
 
-    # Кнопки подпапок
     for f in folders:
-        keyboard.append([InlineKeyboardButton(f['name'], callback_data=f"folder:{f['id']}:{folder_id}")])
+        folder_parents[f['id']] = folder_id
+        keyboard.append([InlineKeyboardButton(f['name'], callback_data=f"folder:{f['id']}")])
 
-    # Кнопки заметок
     for n in notes:
-        keyboard.append([InlineKeyboardButton(n['name'], callback_data=f"note:{n['id']}:{folder_id}")])
+        folder_parents[n['id']] = folder_id
+        keyboard.append([InlineKeyboardButton(n['name'], callback_data=f"note:{n['id']}")])
 
-    # Кнопка "Назад"
     if folder_id != FOLDER_ID:
         keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"folder:{parent_id}")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.reply_text("Выберите папку или заметку:", reply_markup=reply_markup)
-    
-# Показать содержимое заметки
+
+# Показать содержимое заметки и изображения
 async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    parts = query.data.split(":")
-    file_id = parts[1]
-    folder_id = parts[2] if len(parts) > 2 else FOLDER_ID
+    file_id = query.data.split(":")[1]
+    folder_id = folder_parents.get(file_id, FOLDER_ID)
 
-    # Кнопка "Назад"
     keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data=f"folder:{folder_id}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.reply_text("Вернуться:", reply_markup=reply_markup)
@@ -156,20 +141,14 @@ async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     content = service.files().get_media(fileId=file_id).execute()
     text = content.decode("utf-8")
 
-    # ищем все упоминания картинок ![[...]]
+    # Ищем картинки ![[...]]
     matches = re.findall(r"!\[\[(.*?)\]\]", text, flags=re.IGNORECASE | re.MULTILINE)
-
-
-    # убираем все ![[...]] из текста
     clean_text = re.sub(r"!\[\[(.*?)\]\]", "", text, flags=re.IGNORECASE | re.MULTILINE)
-
-    # ограничиваем текст
     if len(clean_text) > 4000:
         clean_text = clean_text[:4000] + "\n\n...✂️ (обрезано)"
 
     await query.message.reply_text(f"📄 {name}:\n\n{clean_text.strip()}")
 
-    # отправляем картинки
     if matches:
         all_files = get_all_files()
         file_map = {f["name"].lower(): f["id"] for f in all_files}
@@ -188,8 +167,7 @@ def main():
     if not TOKEN:
         raise ValueError("Нет BOT_TOKEN! Добавь его в настройки Render.")
 
-    thread = Thread(target=run_server)
-    thread.start()
+    Thread(target=run_server).start()
 
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))

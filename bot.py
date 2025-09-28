@@ -1,7 +1,9 @@
 from flask import Flask
 from threading import Thread
 from telegram import Update
+from telegram import InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import re
 import os
 import json
 from google.oauth2 import service_account
@@ -73,6 +75,10 @@ async def list_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📂 Выберите заметку:", reply_markup=reply_markup)
 
 
+import re
+from io import BytesIO
+from telegram import InputFile
+
 async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -86,31 +92,32 @@ async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     content = service.files().get_media(fileId=file_id).execute()
     text = content.decode("utf-8")
 
-    # ищем все вхождения ![[...]]
-    matches = re.findall(r"!\[\[(.*?)\]\]", text)
+    # ищем все упоминания картинок ![[...]]
+    matches = re.findall(r"!\[\[(.*?)\]\]", text, flags=re.IGNORECASE | re.MULTILINE)
 
     # убираем все ![[...]] из текста
-    clean_text = re.sub(r"!\[\[(.*?)\]\]", "", text)
+    clean_text = re.sub(r"!\[\[(.*?)\]\]", "", text, flags=re.IGNORECASE | re.MULTILINE)
 
     # ограничиваем текст
     if len(clean_text) > 4000:
         clean_text = clean_text[:4000] + "\n\n...✂️ (обрезано)"
 
-    await query.message.reply_text(f"📄 {name}:\n\n{clean_text}")
+    # отправляем текст
+    await query.message.reply_text(f"📄 {name}:\n\n{clean_text.strip()}")
 
-    # 🔥 обрабатываем картинки
+    # 🔥 отправляем картинки
     if matches:
-        all_files = get_all_files()
-        file_map = {f["name"].lower(): f["id"] for f in all_files}  # делаем регистр-независимый поиск
+        all_files = get_all_files()  # функция должна вернуть список всех файлов в Drive
+        file_map = {f["name"].lower(): f["id"] for f in all_files}  # регистр-независимо
 
         for m in matches:
-            # если нет расширения — добавим .png
+            # добавляем расширение .png, если нет
             if not (m.lower().endswith(".png") or m.lower().endswith(".jpg")):
                 m = m + ".png"
 
-            file_id = file_map.get(m.lower())
-            if file_id:
-                img_data = service.files().get_media(fileId=file_id).execute()
+            file_id_img = file_map.get(m.lower())
+            if file_id_img:
+                img_data = service.files().get_media(fileId=file_id_img).execute()
                 bio = BytesIO(img_data)
                 bio.name = m
                 await query.message.reply_photo(InputFile(bio))

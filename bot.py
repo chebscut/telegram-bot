@@ -95,6 +95,13 @@ async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # ищем все упоминания картинок ![[...]]
     matches = re.findall(r"!\[\[(.*?)\]\]", text, flags=re.IGNORECASE | re.MULTILINE)
 
+    # 🔹 Отладка: отправляем список найденных картинок
+    if matches:
+        debug_msg = "Найденные картинки в заметке:\n" + "\n".join(matches)
+        await query.message.reply_text(debug_msg)
+    else:
+        await query.message.reply_text("Картинок в заметке не найдено.")
+
     # убираем все ![[...]] из текста
     clean_text = re.sub(r"!\[\[(.*?)\]\]", "", text, flags=re.IGNORECASE | re.MULTILINE)
 

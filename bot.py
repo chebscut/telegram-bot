@@ -44,7 +44,7 @@ def home():
 def run_server():
     app_server.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
- ------------------- Telegram-бот -------------------
+# ------------------- Telegram-бот -------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Привет! Я работаю на Render 🤖\n\n"

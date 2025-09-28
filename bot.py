@@ -41,14 +41,13 @@ def run_server():
 
 # ------------------- Telegram-бот -------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я подключен к Obsidian через Google Drive 🤖\n\n"
+    await update.message.reply_text("Привет! Я работаю на Render 🤖\n\n"
                                     "Доступные команды:\n"
                                     "/list — список заметок\n"
-                                    "/note <имя> — открыть заметку\n"
-                                    "/search <текст> — поиск по заметкам")
+                                    "/note <имя> — открыть заметку")
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Ты написал: {update.message.text}")
+    await update.message.reply_text(update.message.text)
 
 async def list_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     results = service.files().list(
@@ -62,66 +61,36 @@ async def list_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         names = "\n".join(file['name'] for file in files)
         await update.message.reply_text(f"Заметки:\n{names}")
 
+# 🔥 новая команда
 async def get_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Использование: /note <имя_файла.md>")
         return
+
     filename = " ".join(context.args)
 
+    # ищем файл в папке Obsidian
     results = service.files().list(
         q=f"'{FOLDER_ID}' in parents and name='{filename}'",
         fields="files(id, name)"
     ).execute()
     files = results.get('files', [])
+
     if not files:
         await update.message.reply_text("Такой заметки нет 😢")
-    else:
-        file_id = files[0]['id']
-        content = service.files().get_media(fileId=file_id).execute()
-        text = content.decode("utf-8")
-        await update.message.reply_text(f"📄 {filename}:\n\n{text[:4000]}")  # Ограничение 4096 символов в Telegram
-
-async def search_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Использование: /search <ключевое_слово>")
-        return
-    keyword = " ".join(context.args).lower()
-
-    results = service.files().list(
-        q=f"'{FOLDER_ID}' in parents and mimeType='text/markdown'",
-        fields="files(id, name)"
-    ).execute()
-    files = results.get('files', [])
-
-    found = []
-    for file in files:
-        content = service.files().get_media(fileId=file['id']).execute().decode("utf-8")
-        if keyword in content.lower():
-            found.append(file['name'])
-
-    if found:
-        await update.message.reply_text("🔎 Найдено:\n" + "\n".join(found))
-    else:
-        await update.message.reply_text("Ничего не найдено 😢")
-
-async def upload_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.document:
-        await update.message.reply_text("Пришли мне файл `.md` для загрузки.")
         return
 
-    file = await update.message.document.get_file()
-    content = await file.download_as_bytearray()
+    file_id = files[0]['id']
+    # скачиваем содержимое
+    content = service.files().get_media(fileId=file_id).execute()
+    text = content.decode("utf-8")
 
-    file_metadata = {
-        "name": update.message.document.file_name,
-        "parents": [FOLDER_ID]
-    }
-    service.files().create(
-        body=file_metadata,
-        media_body={"mimeType": "text/markdown", "body": content}
-    ).execute()
+    # Telegram ограничивает сообщение 4096 символами
+    if len(text) > 4000:
+        await update.message.reply_text(f"📄 {filename} (показаны первые 4000 символов):\n\n{text[:4000]}")
+    else:
+        await update.message.reply_text(f"📄 {filename}:\n\n{text}")
 
-    await update.message.reply_text(f"✅ Файл {update.message.document.file_name} загружен в Google Drive!")
 
 # ------------------- main -------------------
 
@@ -138,7 +107,9 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("list", list_notes))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    app.add_handler(CommandHandler("note", get_note))
     app.run_polling()
+    
 
 if __name__ == "__main__":
     main()

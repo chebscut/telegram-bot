@@ -4,7 +4,7 @@ import re
 from io import BytesIO
 from threading import Thread
 from flask import Flask
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile, Bot
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     ContextTypes, MessageHandler, filters
@@ -14,8 +14,6 @@ from googleapiclient.discovery import build
 
 # ------------------- Telegram -------------------
 TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("Нет BOT_TOKEN! Добавь его в настройки Render.")
 
 # ------------------- Google Drive -------------------
 google_credentials = os.getenv("GOOGLE_CREDENTIALS")
@@ -43,7 +41,6 @@ def home():
 
 def run_server():
     app_server.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-
 # ------------------- Работа с Drive -------------------
 def get_all_files(folder_id=FOLDER_ID):
     """Возвращает все файлы и папки рекурсивно"""
@@ -65,7 +62,6 @@ def get_all_files(folder_id=FOLDER_ID):
 
 # Словарь для хранения родительских папок (для кнопки "Назад")
 folder_parents = {}
-
 # ------------------- Telegram-бот -------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -79,6 +75,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.callback_query.message.reply_text("Привет! 👋\nВыберите действие:", reply_markup=reply_markup)
 
+
 async def start_buttons_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -90,7 +87,7 @@ async def start_buttons_callback(update: Update, context: ContextTypes.DEFAULT_T
         await search_mode_callback(query, context)
     elif choice == "menu":
         await start(update, context)
-
+# Список папок в корне
 async def list_folders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     folders_result = service.files().list(
         q=f"'{FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder'",
@@ -111,6 +108,8 @@ async def list_folders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.callback_query.message.reply_text("Выберите папку:", reply_markup=reply_markup)
 
+
+# Показать содержимое папки
 async def folder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -133,6 +132,7 @@ async def folder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for f in folders:
         folder_parents[f['id']] = folder_id
         keyboard.append([InlineKeyboardButton(f['name'], callback_data=f"folder:{f['id']}")])
+
     for n in notes:
         folder_parents[n['id']] = folder_id
         keyboard.append([InlineKeyboardButton(n['name'], callback_data=f"note:{n['id']}")])
@@ -142,7 +142,7 @@ async def folder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.reply_text("Выберите папку или заметку:", reply_markup=reply_markup)
-
+# Показать содержимое заметки и изображения
 async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -177,10 +177,11 @@ async def show_note_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data=f"folder:{folder_id}")]]
     await query.message.reply_text("Вернуться:", reply_markup=InlineKeyboardMarkup(keyboard))
-
+# ------------------- Режим поиска -------------------
 async def search_mode_callback(query, context):
     context.user_data["search_mode"] = True
     await query.message.reply_text("Введите номер блюда (например 123):")
+
 
 async def handle_number_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.user_data.get("search_mode"):
@@ -238,16 +239,16 @@ async def handle_number_input(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("Выберите действие:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     context.user_data["search_mode"] = False
-
 # ------------------- main -------------------
 def main():
-    # Запуск Flask-сервера
+    if not TOKEN:
+        raise ValueError("Нет BOT_TOKEN! Добавь его в настройки Render.")
+
     Thread(target=run_server).start()
 
-    # Создание приложения Telegram
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("folders", list_folders))
+    app.add_handler(CommandHandler("folders", list_folders))  # можно оставить для отладки
     app.add_handler(CallbackQueryHandler(start_buttons_callback, pattern=r"^start:"))
     app.add_handler(CallbackQueryHandler(folder_callback, pattern=r"^folder:"))
     app.add_handler(CallbackQueryHandler(show_note_callback, pattern=r"^note:"))
@@ -255,5 +256,6 @@ def main():
 
     app.run_polling()
 
+
 if __name__ == "__main__":
-    main
+    main()

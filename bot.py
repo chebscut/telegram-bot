@@ -244,17 +244,6 @@ def main():
     # Запуск Flask-сервера
     Thread(target=run_server).start()
 
-    # --- Сброс старых апдейтов Telegram ---
-    try:
-        bot = Bot(token=TOKEN)
-        updates = bot.get_updates()
-        if updates:
-            last_id = updates[-1].update_id
-            bot.get_updates(offset=last_id + 1)
-        print("Старые апдейты Telegram сброшены")
-    except Exception as e:
-        print("Ошибка при сбросе апдейтов:", e)
-
     # Создание приложения Telegram
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))

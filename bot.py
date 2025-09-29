@@ -62,8 +62,6 @@ def get_all_files(folder_id=FOLDER_ID):
 
 # Словарь для хранения родительских папок (для кнопки "Назад")
 folder_parents = {}
-
-print(service_account_info["private_key"][:100])
 # ------------------- Telegram-бот -------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [

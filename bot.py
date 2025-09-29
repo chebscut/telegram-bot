@@ -13,8 +13,19 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 # ------------------- Telegram -------------------
+
 TOKEN = os.getenv("BOT_TOKEN")
 
+  # ------------------- Сброс старых апдейтов -------------------
+    try:
+        bot = Bot(token=TOKEN)
+        updates = bot.get_updates()
+        if updates:
+            last_id = updates[-1].update_id
+            bot.get_updates(offset=last_id + 1)
+        print("Старые апдейты сброшены")
+    except Exception as e:
+        print("Ошибка при сбросе апдейтов:", e)
 # ------------------- Google Drive -------------------
 google_credentials = os.getenv("GOOGLE_CREDENTIALS")
 if not google_credentials:
